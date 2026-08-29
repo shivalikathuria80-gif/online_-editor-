@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All-in-One Media Editor</title>
+<style>
+  :root{
+    --bg:#12131a; --panel:#1a1c26; --panel2:#20222e; --border:#2c2f3d;
+    --accent:#7c9cff; --accent2:#ff8a7c; --text:#e8e9f0; --muted:#9096ab;
+    --good:#66d9a8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh;
+  }
+  header{
+    padding:20px 24px 0; text-align:center;
+  }
+  header h1{margin:0 0 4px; font-size:22px; letter-spacing:.3px;}
+  header p{margin:0 0 16px; color:var(--muted); font-size:13px;}
+
+  .tabs{
+    display:flex; justify-content:center; gap:8px; padding:0 16px 16px;
+    flex-wrap:wrap;
+  }
+  .tab-btn{
+    background:var(--panel); border:1px solid var(--border); color:var(--muted);
+    padding:10px 20px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:600;
+    transition:.15s;
+  }
+  .tab-btn.active{ background:var(--accent); color:#0d0e14; border-color:var(--accent);}
+  .tab-btn:hover:not(.active){ border-color:var(--accent); color:var(--text);}
+
+  main{ max-width:980px; margin:0 auto; padding:0 16px 60px; }
+  .panel{ display:none; }
+  .panel.active{ display:block; animation:fade .2s ease; }
+  @keyframes fade{ from{opacity:0} to{opacity:1} }
+
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:18px; margin-bottom:16px;
+  }
+  .drop{
+    border:2px dashed var(--border); border-radius:12px; padding:28px; text-align:center;
+    color:var(--muted); cursor:pointer; transition:.15s;
+  }
+  .drop:hover{ border-color:var(--accent); color:var(--text); }
+  .drop input{ display:none; }
+
+  .stage{
+    width:100%; display:flex; justify-content:center; background:#000;
+    border-radius:10px; overflow:hidden; margin-top:14px; position:relative;
+  }
+  canvas, video{ max-width:100%; display:block; }
+
+  .controls{ margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+  .ctl{ background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; }
+  .ctl label{ display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:6px;}
+  .ctl input[type=range]{ width:100%; accent-color:var(--accent); }
+  .ctl input[type=text], .ctl input[type=number], .ctl select{
+    width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+    border-radius:6px; padding:6px 8px; font-size:13px;
+  }
+  .ctl input[type=color]{ width:100%; height:32px; border:none; background:none; cursor:pointer; }
+
+  .row{ display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  button.btn{
+    background:var(--accent); color:#0d0e14; border:none; padding:10px 16px;
+    border-radius:8px; font-weight:700; cursor:pointer; font-size:13px;
+  }
+  button.btn.secondary{ background:var(--panel2); color:var(--text); border:1px solid var(--border); }
+  button.btn.danger{ background:var(--accent2); color:#2a0d0d; }
+  button.btn:disabled{ opacity:.4; cursor:not-allowed; }
+  button.btn:hover:not(:disabled){ filter:brightness(1.08); }
+
+  .hint{ font-size:12px; color:var(--muted); margin-top:8px; }
+  .status{ font-size:12px; color:var(--good); margin-top:8px; min-height:16px; }
+  .filename{ font-size:12px; color:var(--muted); margin-top:6px; word-break:break-all; }
+
+  .waveform-wrap{ position:relative; margin-top:14px; }
+  #audioWave{ width:100%; height:140px; background:#0b0c12; border-radius:10px; display:block; }
+  #audioOverlay{ position:absolute; top:0; left:0; width:100%; height:140px; pointer-events:none; }
+
+  footer{ text-align:center; color:var(--muted); font-size:12px; padding:20px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>All-in-One Media Editor</h1>
+  <p>Photo &middot; Video &middot; Audio — everything runs locally in your browser. Nothing is uploaded anywhere.</p>
+</header>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="photo">📷 Photo</button>
+  <button class="tab-btn" data-tab="video">🎬 Video</button>
+  <button class="tab-btn" data-tab="audio">🎵 Audio</button>
+</div>
+
+<main>
+
+<!-- ================= PHOTO ================= -->
+<section class="panel active" id="panel-photo">
+  <div class="card">
+    <label class="drop" id="photoDrop">
+      <input type="file" id="photoInput" accept="image/*">
+      <div>📁 Click or drop an image here (PNG, JPG, WEBP...)</div>
+    </label>
+    <div class="filename" id="photoFilename"></div>
+
+    <div class="stage" id="photoStage" style="display:none;">
+      <canvas id="photoCanvas"></canvas>
+    </div>
+
+    <div class="controls" id="photoControls" style="display:none;">
+      <div class="ctl"><label>Brightness <span id="v-bright">100%</span></label>
+        <input type="range" id="bright" min="0" max="200" value="100"></div>
+      <div class="ctl"><label>Contrast <span id="v-contrast">100%</span></label>
+        <input type="range" id="contrast" min="0" max="200" value="100"></div>
+      <div class="ctl"><label>Saturation <span id="v-sat">100%</span></label>
+        <input type="range" id="sat" min="0" max="200" value="100"></div>
+      <div class="ctl"><label>Blur <span id="v-blur">0px</span></label>
+        <input type="range" id="blur" min="0" max="20" value="0"></div>
+      <div class="ctl"><label>Hue Rotate <span id="v-hue">0deg</span></label>
+        <input type="range" id="hue" min="0" max="360" value="0"></div>
+      <div class="ctl"><label>Grayscale <span id="v-gray">0%</span></label>
+        <input type="range" id="gray" min="0" max="100" value="0"></div>
+      <div class="ctl"><label>Sepia <span id="v-sepia">0%</span></label>
+        <input type="range" id="sepia" min="0" max="100" value="0"></div>
+      <div class="ctl"><label>Invert <span id="v-invert">0%</span></label>
+        <input type="range" id="invert" min="0" max="100" value="0"></div>
+    </div>
+
+    <div class="controls" id="photoTextControls" style="display:none;">
+      <div class="ctl"><label>Text to add</label>
+        <input type="text" id="textInput" placeholder="Your caption..."></div>
+      <div class="ctl"><label>Font size <span id="v-fsize">40px</span></label>
+        <input type="range" id="fsize" min="10" max="150" value="40"></div>
+      <div class="ctl"><label>Color</label>
+        <input type="color" id="fcolor" value="#ffffff"></div>
+      <div class="ctl"><label>Position X <span id="v-px">50%</span></label>
+        <input type="range" id="posx" min="0" max="100" value="50"></div>
+      <div class="ctl"><label>Position Y <span id="v-py">50%</span></label>
+        <input type="range" id="posy" min="0" max="100" value="50"></div>
+    </div>
+
+    <div class="row" id="photoActions" style="display:none;">
+      <button class="btn secondary" id="rotateL">⟲ Rotate Left</button>
+      <button class="btn secondary" id="rotateR">⟳ Rotate Right</button>
+      <button class="btn secondary" id="flipH">⇋ Flip Horizontal</button>
+      <button class="btn secondary" id="flipV">⇵ Flip Vertical</button>
+      <button class="btn secondary" id="cropBtn">✂ Crop mode</button>
+      <button class="btn secondary" id="applyCrop" style="display:none;">✔ Apply Crop</button>
+      <button class="btn secondary" id="addText">🔤 Add Text</button>
+      <button class="btn danger" id="resetPhoto">↺ Reset</button>
+      <button class="btn" id="downloadPhoto">⬇ Download PNG</button>
+    </div>
+    <div class="hint" id="cropHint" style="display:none;">Drag on the image to select a crop area, then click "Apply Crop".</div>
+  </div>
+</section>
+
+<!-- ================= VIDEO ================= -->
+<section class="panel" id="panel-video">
+  <div class="card">
+    <label class="drop" id="videoDrop">
+      <input type="file" id="videoInput" accept="video/*">
+      <div>📁 Click or drop a video here (MP4, WEBM, MOV...)</div>
+    </label>
+    <div class="filename" id="videoFilename"></div>
+
+    <div class="stage" id="videoStage" style="display:none;">
+      <video id="sourceVideo" style="display:none;" playsinline muted></video>
+      <canvas id="videoCanvas"></canvas>
+    </div>
+
+    <div class="controls" id="videoTrimControls" style="display:none;">
+      <div class="ctl"><label>Trim start (s) <span id="v-tstart">0.0</span></label>
+        <input type="range" id="trimStart" min="0" max="0" step="0.1" value="0"></div>
+      <div class="ctl"><label>Trim end (s) <span id="v-tend">0.0</span></label>
+        <input type="range" id="trimEnd" min="0" max="0" step="0.1" value="0"></div>
+    </div>
+
+    <div class="controls" id="videoFilterControls" style="display:none;">
+      <div class="ctl"><label>Brightness <span id="v-vbright">100%</span></label>
+        <input type="range" id="vbright" min="0" max="200" value="100"></div>
+      <div class="ctl"><label>Contrast <span id="v-vcontrast">100%</span></label>
+        <input type="range" id="vcontrast" min="0" max="200" value="100"></div>
+      <div class="ctl"><label>Saturation <span id="v-vsat">100%</span></label>
+        <input type="range" id="vsat" min="0" max="200" value="100"></div>
+      <div class="ctl"><label>Grayscale <span id="v-vgray">0%</span></label>
+        <input type="range" id="vgray" min="0" max="100" value="0"></div>
+      <div class="ctl"><label>Sepia <span id="v-vsepia">0%</span></label>
+        <input type="range" id="vsepia" min="0" max="100" value="0"></div>
+      <div class="ctl"><label>Playback speed <span id="v-vspeed">1.0x</span></label>
+        <input type="range" id="vspeed" min="25" max="200" value="100"></div>
+    </div>
+
+    <div class="row" id="videoActions" style="display:none;">
+      <button class="btn secondary" id="playTrim">▶ Preview Trim</button>
+      <button class="btn secondary" id="stopTrim">⏸ Stop</button>
+      <button class="btn secondary" id="grabFrame">🖼 Extract Frame as PNG</button>
+      <button class="btn danger" id="resetVideo">↺ Reset Filters</button>
+      <button class="btn" id="exportVideo">⬇ Export Trimmed Video (WEBM)</button>
+    </div>
+    <div class="status" id="videoStatus"></div>
+    <div class="hint">Export re-encodes the trimmed range with your filters applied, as a WEBM file (uses your browser's built-in recorder — works best in Chrome/Edge).</div>
+  </div>
+</section>
+
+<!-- ================= AUDIO ================= -->
+<section class="panel" id="panel-audio">
+  <div class="card">
+    <label class="drop" id="audioDrop">
+      <input type="file" id="audioInput" accept="audio/*">
+      <div>📁 Click or drop an audio file here (MP3, WAV, OGG...)</div>
+    </label>
+    <div class="filename" id="audioFilename"></div>
+
+    <div class="waveform-wrap" id="audioStage" style="display:none;">
+      <canvas id="audioWave"></canvas>
+      <canvas id="audioOverlay"></canvas>
+    </div>
+
+    <div class="controls" id="audioTrimControls" style="display:none;">
+      <div class="ctl"><label>Trim start (s) <span id="v-astart">0.0</span></label>
+        <input type="range" id="audioStart" min="0" max="0" step="0.05" value="0"></div>
+      <div class="ctl"><label>Trim end (s) <span id="v-aend">0.0</span></label>
+        <input type="range" id="audioEnd" min="0" max="0" step="0.05" value="0"></div>
+      <div class="ctl"><label>Volume <span id="v-avol">100%</span></label>
+        <input type="range" id="audioVol" min="0" max="200" value="100"></div>
+      <div class="ctl"><label>Playback speed <span id="v-aspeed">1.0x</span></label>
+        <input type="range" id="audioSpeed" min="50" max="200" value="100"></div>
+      <div class="ctl"><label>Fade in (s) <span id="v-afadein">0.0</span></label>
+        <input type="range" id="fadeIn" min="0" max="10" step="0.1" value="0"></div>
+      <div class="ctl"><label>Fade out (s) <span id="v-afadeout">0.0</span></label>
+        <input type="range" id="fadeOut" min="0" max="10" step="0.1" value="0"></div>
+    </div>
+
+    <div class="row" id="audioActions" style="display:none;">
+      <button class="btn secondary" id="playAudio">▶ Preview</button>
+      <button class="btn secondary" id="stopAudio">⏸ Stop</button>
+      <button class="btn danger" id="resetAudio">↺ Reset</button>
+      <button class="btn" id="exportAudio">⬇ Export WAV</button>
+    </div>
+    <div class="status" id="audioStatus"></div>
+  </div>
+</section>
+
+</main>
+
+<footer>Built for local, offline use — your files never leave your device.</footer>
+
+<script>
+/* ============================================================
+   TAB SWITCHING
+============================================================ */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-'+btn.dataset.tab).classList.add('active');
+  });
+});
+
+/* ============================================================
+   PHOTO EDITOR
+============================================================ */
+(function(){
+  const input = document.getElementById('photoInput');
+  const drop = document.getElementById('photoDrop');
+  const stage = document.getElementById('photoStage');
+  const canvas = document.getElementById('photoCanvas');
+  const ctx = canvas.getContext('2d');
+  const controls = document.getElementById('photoControls');
+  const textControls = document.getElementById('photoTextControls');
+  const actions = document.getElementById('photoActions');
+  const filenameEl = document.getElementById('photoFilename');
+
+  let originalImg = null;   // pristine loaded image
+  let baseCanvas = document.createElement('canvas'); // holds committed edits (rotate/flip/crop/text)
+  let baseCtx = baseCanvas.getContext('2d');
+
+  const sliders = ['bright','contrast','sat','blur','hue','gray','sepia','invert'];
+  const labels = {bright:'%',contrast:'%',sat:'%',blur:'px',hue:'deg',gray:'%',sepia:'%',invert:'%'};
+  const labelIds = {bright:'v-bright',contrast:'v-contrast',sat:'v-sat',blur:'v-blur',hue:'v-hue',gray:'v-gray',sepia:'v-sepia',invert:'v-invert'};
+
+  function currentFilterString(){
+    const b = document.getElementById('bright').value;
+    const c = document.getElementById('contrast').value;
+    const s = document.getElementById('sat').value;
+    const bl = document.getElementById('blur').value;
+    const h = document.getElementById('hue').value;
+    const g = document.getElementById('gray').value;
+    const se = document.getElementById('sepia').value;
+    const inv = document.getElementById('invert').value;
+    return `brightness(${b}%) contrast(${c}%) saturate(${s}%) blur(${bl}px) hue-rotate(${h}deg) grayscale(${g}%) sepia(${se}%) invert(${inv}%)`;
+  }
+
+  function redraw(){
+    canvas.width = baseCanvas.width;
+    canvas.height = baseCanvas.height;
+    ctx.filter = currentFilterString();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(baseCanvas,0,0);
+    ctx.filter = 'none';
+  }
+
+  sliders.forEach(id=>{
+    document.getElementById(id).addEventListener('input', e=>{
+      document.getElementById(labelIds[id]).textContent = e.target.value + labels[id];
+      redraw();
+    });
+  });
+
+  function loadFile(file){
+    if(!file) return;
+    filenameEl.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = new Image();
+      img.onload = ()=>{
+        originalImg = img;
+        baseCanvas.width = img.naturalWidth;
+        baseCanvas.height = img.naturalHeight;
+        baseCtx.clearRect(0,0,baseCanvas.width,baseCanvas.height);
+        baseCtx.drawImage(img,0,0);
+        redraw();
+        stage.style.display='flex';
+        controls.style.display='grid';
+        textControls.style.display='grid';
+        actions.style.display='flex';
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  input.addEventListener('change', e=>loadFile(e.target.files[0]));
+  drop.addEventListener('dragover', e=>{e.preventDefault(); drop.style.borderColor='var(--accent)';});
+  drop.addEventListener('dragleave', ()=> drop.style.borderColor='var(--border)');
+  drop.addEventListener('drop', e=>{
+    e.preventDefault(); drop.style.borderColor='var(--border)';
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  function commitCurrentToBase(){
+    // bake current filtered view into base so subsequent ops (rotate/crop/text) stack correctly
+    baseCanvas.width = canvas.width;
+    baseCanvas.height = canvas.height;
+    baseCtx.clearRect(0,0,baseCanvas.width,baseCanvas.height);
+    baseCtx.drawImage(canvas,0,0);
+    // reset sliders visually (edits are now baked in)
+    sliders.forEach(id=>{
+      document.getElementById(id).value = (id==='bright'||id==='contrast'||id==='sat') ? 100 : 0;
+      document.getElementById(labelIds[id]).textContent = document.getElementById(id).value + labels[id];
+    });
+    redraw();
+  }
+
+  document.getElementById('rotateL').onclick = ()=>{
+    commitCurrentToBase();
+    const w = baseCanvas.width, h = baseCanvas.height;
+    const tmp = document.createElement('canvas'); tmp.width = h; tmp.height = w;
+    const tctx = tmp.getContext('2d');
+    tctx.translate(0,w); tctx.rotate(-Math.PI/2); tctx.drawImage(baseCanvas,0,0);
+    baseCanvas = tmp; baseCtx = tmp.getContext('2d');
+    redraw();
+  };
+  document.getElementById('rotateR').onclick = ()=>{
+    commitCurrentToBase();
+    const w = baseCanvas.width, h = baseCanvas.height;
+    const tmp = document.createElement('canvas'); tmp.width = h; tmp.height = w;
+    const tctx = tmp.getContext('2d');
+    tctx.translate(h,0); tctx.rotate(Math.PI/2); tctx.drawImage(baseCanvas,0,0);
+    baseCanvas = tmp; baseCtx = tmp.getContext('2d');
+    redraw();
+  };
+  document.getElementById('flipH').onclick = ()=>{
+    commitCurrentToBase();
+    const tmp = document.createElement('canvas'); tmp.width = baseCanvas.width; tmp.height = baseCanvas.height;
+    const tctx = tmp.getContext('2d');
+    tctx.translate(tmp.width,0); tctx.scale(-1,1); tctx.drawImage(baseCanvas,0,0);
+    baseCanvas = tmp; baseCtx = tmp.getContext('2d');
+    redraw();
+  };
+  document.getElementById('flipV').onclick = ()=>{
+    commitCurrentToBase();
+    const tmp = document.createElement('canvas'); tmp.width = baseCanvas.width; tmp.height = baseCanvas.height;
+    const tctx = tmp.getContext('2d');
+    tctx.translate(0,tmp.height); tctx.scale(1,-1); tctx.drawImage(baseCanvas,0,0);
+    baseCanvas = tmp; baseCtx = tmp.getContext('2d');
+    redraw();
+  };
+
+  // Crop
+  let cropMode = false, cropStart=null, cropRect=null;
+  const cropBtn = document.getElementById('cropBtn');
+  const applyCropBtn = document.getElementById('applyCrop');
+  const cropHint = document.getElementById('cropHint');
+
+  cropBtn.onclick = ()=>{
+    cropMode = !cropMode;
+    cropBtn.textContent = cropMode ? '✂ Cancel Crop' : '✂ Crop mode';
+    applyCropBtn.style.display = cropMode ? 'inline-block' : 'none';
+    cropHint.style.display = cropMode ? 'block' : 'none';
+    cropRect = null;
+  };
+  function canvasPos(e){
+    const r = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / r.width, scaleY = canvas.height / r.height;
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    return {x: cx*scaleX, y: cy*scaleY};
+  }
+  canvas.addEventListener('mousedown', e=>{
+    if(!cropMode) return;
+    cropStart = canvasPos(e);
+  });
+  canvas.addEventListener('mousemove', e=>{
+    if(!cropMode || !cropStart) return;
+    const p = canvasPos(e);
+    cropRect = {
+      x: Math.min(cropStart.x,p.x), y: Math.min(cropStart.y,p.y),
+      w: Math.abs(p.x-cropStart.x), h: Math.abs(p.y-cropStart.y)
+    };
+    redraw();
+    ctx.strokeStyle = '#7c9cff'; ctx.lineWidth = 2;
+    ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
+    ctx.fillStyle = 'rgba(124,156,255,0.15)';
+    ctx.fillRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
+  });
+  window.addEventListener('mouseup', ()=>{ cropStart=null; });
+
+  applyCropBtn.onclick = ()=>{
+    if(!cropRect || cropRect.w<2 || cropRect.h<2){ cropMode=false; cropBtn.click(); return; }
+    commitCurrentToBase();
+    const tmp = document.createElement('canvas');
+    tmp.width = Math.round(cropRect.w); tmp.height = Math.round(cropRect.h);
+    tmp.getContext('2d').drawImage(baseCanvas, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0,0, cropRect.w, cropRect.h);
+    baseCanvas = tmp; baseCtx = tmp.getContext('2d');
+    cropMode = false; cropRect = null;
+    cropBtn.textContent = '✂ Crop mode';
+    applyCropBtn.style.display = 'none';
+    cropHint.style.display = 'none';
+    redraw();
+  };
+
+  document.getElementById('addText').onclick = ()=>{
+    const text = document.getElementById('textInput').value;
+    if(!text) return;
+    commitCurrentToBase();
+    const size = +document.getElementById('fsize').value;
+    const color = document.getElementById('fcolor').value;
+    const px = +document.getElementById('posx').value/100 * baseCanvas.width;
+    const py = +document.getElementById('posy').value/100 * baseCanvas.height;
+    baseCtx.font = `bold ${size}px sans-serif`;
+    baseCtx.fillStyle = color;
+    baseCtx.textAlign = 'center';
+    baseCtx.textBaseline = 'middle';
+    baseCtx.lineWidth = size/15;
+    baseCtx.strokeStyle = 'rgba(0,0,0,0.6)';
+    baseCtx.strokeText(text, px, py);
+    baseCtx.fillText(text, px, py);
+    redraw();
+  };
+
+  document.getElementById('resetPhoto').onclick = ()=>{
+    if(!originalImg) return;
+    baseCanvas.width = originalImg.naturalWidth;
+    baseCanvas.height = originalImg.naturalHeight;
+    baseCtx.clearRect(0,0,baseCanvas.width,baseCanvas.height);
+    baseCtx.drawImage(originalImg,0,0);
+    sliders.forEach(id=>{
+      document.getElementById(id).value = (id==='bright'||id==='contrast'||id==='sat') ? 100 : 0;
+      document.getElementById(labelIds[id]).textContent = document.getElementById(id).value + labels[id];
+    });
+    redraw();
+  };
+
+  document.getElementById('downloadPhoto').onclick = ()=>{
+    canvas.toBlob(blob=>{
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'edited-photo.png';
+      a.click();
+    }, 'image/png');
+  };
+})();
+
+/* ============================================================
+   VIDEO EDITOR
+============================================================ */
+(function(){
+  const input = document.getElementById('videoInput');
+  const drop = document.getElementById('videoDrop');
+  const stage = document.getElementById('videoStage');
+  const video = document.getElementById('sourceVideo');
+  const canvas = document.getElementById('videoCanvas');
+  const ctx = canvas.getContext('2d');
+  const trimControls = document.getElementById('videoTrimControls');
+  const filterControls = document.getElementById('videoFilterControls');
+  const actions = document.getElementById('videoActions');
+  const statusEl = document.getElementById('videoStatus');
+  const filenameEl = document.getElementById('videoFilename');
+
+  const trimStart = document.getElementById('trimStart');
+  const trimEnd = document.getElementById('trimEnd');
+  let rafId = null;
+
+  function filterString(){
+    const b = document.getElementById('vbright').value;
+    const c = document.getElementById('vcontrast').value;
+    const s = document.getElementById('vsat').value;
+    const g = document.getElementById('vgray').value;
+    const se = document.getElementById('vsepia').value;
+    return `brightness(${b}%) contrast(${c}%) saturate(${s}%) grayscale(${g}%) sepia(${se}%)`;
+  }
+
+  function drawLoop(){
+    if(video.paused || video.ended){ rafId=null; return; }
+    ctx.filter = filterString();
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    if(video.currentTime >= +trimEnd.value){
+      video.pause();
+      rafId=null;
+      return;
+    }
+    rafId = requestAnimationFrame(drawLoop);
+  }
+
+  function loadFile(file){
+    if(!file) return;
+    filenameEl.textContent = file.name;
+    const url = URL.createObjectURL(file);
+    video.src = url;
+    video.onloadedmetadata = ()=>{
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      trimStart.max = video.duration; trimEnd.max = video.duration;
+      trimStart.value = 0; trimEnd.value = video.duration;
+      document.getElementById('v-tstart').textContent = '0.0';
+      document.getElementById('v-tend').textContent = video.duration.toFixed(1);
+      video.currentTime = 0;
+      stage.style.display='flex';
+      trimControls.style.display='grid';
+      filterControls.style.display='grid';
+      actions.style.display='flex';
+      statusEl.textContent='';
+      setTimeout(()=>{ ctx.filter=filterString(); ctx.drawImage(video,0,0,canvas.width,canvas.height); }, 200);
+    };
+  }
+  input.addEventListener('change', e=>loadFile(e.target.files[0]));
+  drop.addEventListener('dragover', e=>{e.preventDefault(); drop.style.borderColor='var(--accent)';});
+  drop.addEventListener('dragleave', ()=> drop.style.borderColor='var(--border)');
+  drop.addEventListener('drop', e=>{
+    e.preventDefault(); drop.style.borderColor='var(--border)';
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  trimStart.addEventListener('input', ()=>{
+    document.getElementById('v-tstart').textContent = (+trimStart.value).toFixed(1);
+    if(+trimStart.value > +trimEnd.value) trimEnd.value = trimStart.value;
+    document.getElementById('v-tend').textContent = (+trimEnd.value).toFixed(1);
+    video.currentTime = +trimStart.value;
+  });
+  trimEnd.addEventListener('input', ()=>{
+    document.getElementById('v-tend').textContent = (+trimEnd.value).toFixed(1);
+    if(+trimEnd.value < +trimStart.value) trimStart.value = trimEnd.value;
+    document.getElementById('v-tstart').textContent = (+trimStart.value).toFixed(1);
+  });
+  document.getElementById('vspeed').addEventListener('input', e=>{
+    const v = (+e.target.value/100);
+    document.getElementById('v-vspeed').textContent = v.toFixed(2)+'x';
+    video.playbackRate = v;
+  });
+  ['vbright','vcontrast','vsat','vgray','vsepia'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', e=>{
+      const map = {vbright:'v-vbright',vcontrast:'v-vcontrast',vsat:'v-vsat',vgray:'v-vgray',vsepia:'v-vsepia'};
+      const unit = (id==='vgray'||id==='vsepia') ? '%' : '%';
+      document.getElementById(map[id]).textContent = e.target.value+unit;
+      if(video.paused){ ctx.filter=filterString(); ctx.drawImage(video,0,0,canvas.width,canvas.height); }
+    });
+  });
+
+  document.getElementById('playTrim').onclick = ()=>{
+    video.currentTime = +trimStart.value;
+    video.play();
+    if(!rafId) rafId = requestAnimationFrame(drawLoop);
+  };
+  document.getElementById('stopTrim').onclick = ()=>{
+    video.pause();
+  };
+  document.getElementById('grabFrame').onclick = ()=>{
+    ctx.filter = filterString();
+    ctx.drawImage(video,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob=>{
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download='video-frame.png';
+      a.click();
+    });
+  };
+  document.getElementById('resetVideo').onclick = ()=>{
+    ['vbright','vcontrast','vsat'].forEach(id=>{ document.getElementById(id).value=100; });
+    ['vgray','vsepia'].forEach(id=>{ document.getElementById(id).value=0; });
+    document.getElementById('vspeed').value=100;
+    video.playbackRate = 1;
+    document.getElementById('v-vbright').textContent='100%';
+    document.getElementById('v-vcontrast').textContent='100%';
+    document.getElementById('v-vsat').textContent='100%';
+    document.getElementById('v-vgray').textContent='0%';
+    document.getElementById('v-vsepia').textContent='0%';
+    document.getElementById('v-vspeed').textContent='1.0x';
+    if(video.paused){ ctx.filter=filterString(); ctx.drawImage(video,0,0,canvas.width,canvas.height); }
+  };
+
+  document.getElementById('exportVideo').onclick = ()=>{
+    if(!window.MediaRecorder){ statusEl.textContent='MediaRecorder not supported in this browser.'; return; }
+    statusEl.textContent = 'Recording trimmed segment...';
+    const canvasStream = canvas.captureStream(30);
+    let combined = canvasStream;
+    try{
+      const vidStream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
+      const audioTracks = vidStream.getAudioTracks();
+      if(audioTracks.length){
+        combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+      }
+    }catch(err){ /* audio capture not available; continue video-only */ }
+
+    let mime = 'video/webm;codecs=vp9,opus';
+    if(!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm;codecs=vp8,opus';
+    if(!MediaRecorder.isTypeSupported(mime)) mime = 'video/webm';
+
+    const recorder = new MediaRecorder(combined, {mimeType:mime});
+    const chunks = [];
+    recorder.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+    recorder.onstop = ()=>{
+      const blob = new Blob(chunks, {type:'video/webm'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'edited-video.webm';
+      a.click();
+      statusEl.textContent = 'Export complete ✔';
+    };
+
+    video.currentTime = +trimStart.value;
+    video.onseeked = ()=>{
+      video.onseeked = null;
+      recorder.start();
+      video.play();
+      if(!rafId) rafId = requestAnimationFrame(drawLoop);
+      const checkEnd = setInterval(()=>{
+        if(video.currentTime >= +trimEnd.value || video.paused){
+          clearInterval(checkEnd);
+          recorder.stop();
+          video.pause();
+        }
+      }, 100);
+    };
+  };
+})();
+
+/* ============================================================
+   AUDIO EDITOR
+============================================================ */
+(function(){
+  const input = document.getElementById('audioInput');
+  const drop = document.getElementById('audioDrop');
+  const stage = document.getElementById('audioStage');
+  const waveCanvas = document.getElementById('audioWave');
+  const overlayCanvas = document.getElementById('audioOverlay');
+  const trimControls = document.getElementById('audioTrimControls');
+  const actions = document.getElementById('audioActions');
+  const statusEl = document.getElementById('audioStatus');
+  const filenameEl = document.getElementById('audioFilename');
+
+  const audioStart = document.getElementById('audioStart');
+  const audioEnd = document.getElementById('audioEnd');
+
+  let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let audioBuffer = null;
+  let sourceNode = null, gainNode = null;
+  let playing = false;
+
+  function loadFile(file){
+    if(!file) return;
+    filenameEl.textContent = file.name;
+    statusEl.textContent = 'Decoding audio...';
+    const reader = new FileReader();
+    reader.onload = e=>{
+      audioCtx.decodeAudioData(e.target.result, buffer=>{
+        audioBuffer = buffer;
+        audioStart.max = buffer.duration; audioEnd.max = buffer.duration;
+        audioStart.value = 0; audioEnd.value = buffer.duration;
+        document.getElementById('v-astart').textContent = '0.0';
+        document.getElementById('v-aend').textContent = buffer.duration.toFixed(1);
+        drawWave(buffer);
+        stage.style.display='block';
+        trimControls.style.display='grid';
+        actions.style.display='flex';
+        statusEl.textContent = `Loaded — ${buffer.duration.toFixed(1)}s, ${buffer.numberOfChannels}ch, ${buffer.sampleRate}Hz`;
+      }, err=>{ statusEl.textContent = 'Could not decode this audio file.'; });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+  input.addEventListener('change', e=>loadFile(e.target.files[0]));
+  drop.addEventListener('dragover', e=>{e.preventDefault(); drop.style.borderColor='var(--accent)';});
+  drop.addEventListener('dragleave', ()=> drop.style.borderColor='var(--border)');
+  drop.addEventListener('drop', e=>{
+    e.preventDefault(); drop.style.borderColor='var(--border)';
+    loadFile(e.dataTransfer.files[0]);
+  });
+
+  function drawWave(buffer){
+    const dpr = window.devicePixelRatio || 1;
+    const w = waveCanvas.clientWidth || 900, h = 140;
+    waveCanvas.width = w*dpr; waveCanvas.height = h*dpr;
+    overlayCanvas.width = w*dpr; overlayCanvas.height = h*dpr;
+    const wctx = waveCanvas.getContext('2d');
+    wctx.scale(dpr,dpr);
+    const data = buffer.getChannelData(0);
+    const step = Math.ceil(data.length / w);
+    wctx.fillStyle = '#0b0c12'; wctx.fillRect(0,0,w,h);
+    wctx.strokeStyle = '#7c9cff';
+    wctx.beginPath();
+    for(let i=0;i<w;i++){
+      let min=1, max=-1;
+      for(let j=0;j<step;j++){
+        const idx = i*step+j;
+        if(idx>=data.length) break;
+        const v = data[idx];
+        if(v<min) min=v;
+        if(v>max) max=v;
+      }
+      const y1 = (1+min)*h/2, y2=(1+max)*h/2;
+      wctx.moveTo(i,y1); wctx.lineTo(i,y2);
+    }
+    wctx.stroke();
+    drawOverlay(buffer);
+  }
+
+  function drawOverlay(buffer){
+    const dpr = window.devicePixelRatio || 1;
+    const w = overlayCanvas.clientWidth || 900, h = 140;
+    const octx = overlayCanvas.getContext('2d');
+    octx.setTransform(1,0,0,1,0,0);
+    octx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+    octx.scale(dpr,dpr);
+    const s = +audioStart.value/buffer.duration*w;
+    const en = +audioEnd.value/buffer.duration*w;
+    octx.fillStyle = 'rgba(124,156,255,0.18)';
+    octx.fillRect(s,0,en-s,h);
+    octx.strokeStyle = '#7c9cff'; octx.lineWidth=2;
+    octx.beginPath(); octx.moveTo(s,0); octx.lineTo(s,h); octx.stroke();
+    octx.beginPath(); octx.moveTo(en,0); octx.lineTo(en,h); octx.stroke();
+  }
+
+  audioStart.addEventListener('input', ()=>{
+    if(+audioStart.value > +audioEnd.value) audioStart.value = audioEnd.value;
+    document.getElementById('v-astart').textContent = (+audioStart.value).toFixed(1);
+    if(audioBuffer) drawOverlay(audioBuffer);
+  });
+  audioEnd.addEventListener('input', ()=>{
+    if(+audioEnd.value < +audioStart.value) audioEnd.value = audioStart.value;
+    document.getElementById('v-aend').textContent = (+audioEnd.value).toFixed(1);
+    if(audioBuffer) drawOverlay(audioBuffer);
+  });
+  document.getElementById('audioVol').addEventListener('input', e=>{
+    document.getElementById('v-avol').textContent = e.target.value+'%';
+  });
+  document.getElementById('audioSpeed').addEventListener('input', e=>{
+    document.getElementById('v-aspeed').textContent = (e.target.value/100).toFixed(2)+'x';
+  });
+  document.getElementById('fadeIn').addEventListener('input', e=>{
+    document.getElementById('v-afadein').textContent = (+e.target.value).toFixed(1);
+  });
+  document.getElementById('fadeOut').addEventListener('input', e=>{
+    document.getElementById('v-afadeout').textContent = (+e.target.value).toFixed(1);
+  });
+
+  function stopPlayback(){
+    if(sourceNode){
+      try{ sourceNode.stop(); }catch(e){}
+      sourceNode.disconnect();
+      sourceNode = null;
+    }
+    playing = false;
+  }
+
+  document.getElementById('playAudio').onclick = ()=>{
+    if(!audioBuffer) return;
+    stopPlayback();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const start = +audioStart.value, end = +audioEnd.value;
+    const dur = Math.max(0.01, end-start);
+    const vol = +document.getElementById('audioVol').value/100;
+    const speed = +document.getElementById('audioSpeed').value/100;
+    const fadeInS = +document.getElementById('fadeIn').value;
+    const fadeOutS = +document.getElementById('fadeOut').value;
+
+    sourceNode = audioCtx.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    sourceNode.playbackRate.value = speed;
+    gainNode = audioCtx.createGain();
+    const now = audioCtx.currentTime;
+    const realDur = dur/speed;
+    gainNode.gain.setValueAtTime(fadeInS>0?0:vol, now);
+    if(fadeInS>0) gainNode.gain.linearRampToValueAtTime(vol, now+Math.min(fadeInS,realDur));
+    if(fadeOutS>0){
+      const foStart = Math.max(now, now+realDur-fadeOutS);
+      gainNode.gain.setValueAtTime(vol, foStart);
+      gainNode.gain.linearRampToValueAtTime(0, now+realDur);
+    }
+    sourceNode.connect(gainNode).connect(audioCtx.destination);
+    sourceNode.start(0, start, dur);
+    playing = true;
+    statusEl.textContent = 'Playing preview...';
+    sourceNode.onended = ()=>{ playing=false; statusEl.textContent='Preview finished.'; };
+  };
+  document.getElementById('stopAudio').onclick = ()=>{
+    stopPlayback();
+    statusEl.textContent = 'Stopped.';
+  };
+  document.getElementById('resetAudio').onclick = ()=>{
+    if(!audioBuffer) return;
+    audioStart.value = 0; audioEnd.value = audioBuffer.duration;
+    document.getElementById('audioVol').value=100;
+    document.getElementById('audioSpeed').value=100;
+    document.getElementById('fadeIn').value=0;
+    document.getElementById('fadeOut').value=0;
+    document.getElementById('v-astart').textContent='0.0';
+    document.getElementById('v-aend').textContent=audioBuffer.duration.toFixed(1);
+    document.getElementById('v-avol').textContent='100%';
+    document.getElementById('v-aspeed').textContent='1.0x';
+    document.getElementById('v-afadein').textContent='0.0';
+    document.getElementById('v-afadeout').textContent='0.0';
+    drawOverlay(audioBuffer);
+  };
+
+  function bufferToWav(buffer){
+    const numCh = buffer.numberOfChannels;
+    const len = buffer.length * numCh * 2 + 44;
+    const arrBuffer = new ArrayBuffer(len);
+    const view = new DataView(arrBuffer);
+    const sampleRate = buffer.sampleRate;
+
+    function writeString(offset, str){ for(let i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i)); }
+
+    writeString(0,'RIFF'); view.setUint32(4, len-8, true); writeString(8,'WAVE');
+    writeString(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true);
+    view.setUint16(22,numCh,true); view.setUint32(24,sampleRate,true);
+    view.setUint32(28, sampleRate*numCh*2, true); view.setUint16(32, numCh*2, true);
+    view.setUint16(34,16,true);
+    writeString(36,'data'); view.setUint32(40, buffer.length*numCh*2, true);
+
+    let offset = 44;
+    const channels = [];
+    for(let ch=0; ch<numCh; ch++) channels.push(buffer.getChannelData(ch));
+    for(let i=0; i<buffer.length; i++){
+      for(let ch=0; ch<numCh; ch++){
+        let sample = Math.max(-1, Math.min(1, channels[ch][i]));
+        sample = sample<0 ? sample*0x8000 : sample*0x7FFF;
+        view.setInt16(offset, sample, true);
+        offset += 2;
+      }
+    }
+    return new Blob([view], {type:'audio/wav'});
+  }
+
+  document.getElementById('exportAudio').onclick = async ()=>{
+    if(!audioBuffer) return;
+    statusEl.textContent = 'Rendering export...';
+    const start = +audioStart.value, end = +audioEnd.value;
+    const dur = Math.max(0.01, end-start);
+    const vol = +document.getElementById('audioVol').value/100;
+    const speed = +document.getElementById('audioSpeed').value/100;
+    const fadeInS = +document.getElementById('fadeIn').value;
+    const fadeOutS = +document.getElementById('fadeOut').value;
+    const outDur = dur/speed;
+    const sampleRate = audioBuffer.sampleRate;
+    const offlineCtx = new OfflineAudioContext(audioBuffer.numberOfChannels, Math.ceil(sampleRate*outDur), sampleRate);
+
+    const src = offlineCtx.createBufferSource();
+    src.buffer = audioBuffer;
+    src.playbackRate.value = speed;
+    const gain = offlineCtx.createGain();
+    gain.gain.setValueAtTime(fadeInS>0?0:vol, 0);
+    if(fadeInS>0) gain.gain.linearRampToValueAtTime(vol, Math.min(fadeInS,outDur));
+    if(fadeOutS>0){
+      const foStart = Math.max(0, outDur-fadeOutS);
+      gain.gain.setValueAtTime(vol, foStart);
+      gain.gain.linearRampToValueAtTime(0, outDur);
+    }
+    src.connect(gain).connect(offlineCtx.destination);
+    src.start(0, start, dur);
+
+    try{
+      const rendered = await offlineCtx.startRendering();
+      const blob = bufferToWav(rendered);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'edited-audio.wav';
+      a.click();
+      statusEl.textContent = 'Export complete ✔';
+    }catch(err){
+      statusEl.textContent = 'Export failed: '+err.message;
+    }
+  };
+})();
+</script>
+</body>
+</html>
